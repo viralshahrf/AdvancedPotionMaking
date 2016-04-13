@@ -3,9 +3,9 @@
 using namespace cv;
 using namespace std;
 
-Mat detectDial(Mat& img) {
+Mat detectDial(Mat *img) {
     Mat src;
-    img.copyTo(src);
+    img->copyTo(src);
     
     /* Create Gray Image */
     Mat srcGray;
@@ -46,9 +46,9 @@ Mat detectDial(Mat& img) {
     return dialMask;
 }
 
-Mat createMask(Mat& img) {
+Mat createMask(Mat *img, bool returnOutline, vector<Point> *outline) {
     Mat src;
-    img.copyTo(src);
+    img->copyTo(src);
 
     /* Create Gray Image */
     Mat srcGray;
@@ -80,6 +80,9 @@ Mat createMask(Mat& img) {
     /* create a mask for the ROI */
     Mat srcMask = Mat::zeros(srcEdges.size(), CV_8UC3);
     drawContours(srcMask, contours, maxIndex, Scalar::all(255), CV_FILLED);
+    if (returnOutline == true)
+        *outline = contours[maxIndex];
+
     cvtColor(srcMask, srcMask, CV_BGR2GRAY);
 
     //namedWindow("Region of Interest", CV_WINDOW_AUTOSIZE);
@@ -88,9 +91,9 @@ Mat createMask(Mat& img) {
     return srcMask;
 }
 
-Mat getTexture(Mat& img, Mat& mask, Size sampleSize) {
+Mat getMaterialSample(Mat *img, Mat *mask, Size sampleSize) {
     Mat src;
-    img.copyTo(src);
+    img->copyTo(src);
 
     Mat srcGray, srcEdges;
     cvtColor(src, srcGray, CV_BGR2GRAY);
@@ -101,7 +104,7 @@ Mat getTexture(Mat& img, Mat& mask, Size sampleSize) {
 
     /* Create Gray Image */
     Mat maskGray;
-    mask.copyTo(maskGray);
+    mask->copyTo(maskGray);
     if (maskGray.type() != CV_8UC1) {
         cvtColor(maskGray, maskGray, CV_BGR2GRAY);
     }

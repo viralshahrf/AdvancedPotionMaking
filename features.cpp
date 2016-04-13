@@ -6,16 +6,16 @@ using namespace std;
 /*
 ** Display histogram
 */
-void showHist(MatND& hist, int hbins, int sbins) {
+void showHist(MatND *hist, int hbins, int sbins) {
     int scale = 10;
     Mat histImg = Mat::zeros(sbins*scale, hbins*scale, CV_8UC3);
 
     double maxVal = 0;
-    minMaxLoc(hist, 0, &maxVal, 0, 0);
+    minMaxLoc(*hist, 0, &maxVal, 0, 0);
 
     for (int h = 0; h < hbins; h++) {
         for (int s = 0; s < sbins; s++) {
-            float binVal = hist.at<float>(h, s);
+            float binVal = hist->at<float>(h, s);
             int intensity = cvRound(binVal*255/maxVal);
             rectangle(histImg, Point(h*scale, s*scale),
                       Point( (h+1)*scale - 1, (s+1)*scale - 1),
@@ -31,166 +31,321 @@ void showHist(MatND& hist, int hbins, int sbins) {
 /*
 ** Display SURF keypoints on the image
 */
-void showKeypoints(Mat& img, vector<KeyPoint>& keypoints) {
+void showKeypoints(Mat *img, vector<KeyPoint> *keypoints) {
     Mat src;
-    img.copyTo(src);
-    drawKeypoints(src, keypoints, src);
+    img->copyTo(src);
+    drawKeypoints(src, *keypoints, src);
 
     namedWindow("SURF Keypoints", CV_WINDOW_AUTOSIZE);
     imshow("SURF Keypoints", src);
 }
 
 /*
-** Get the histogram of the area of interest
+** Show image after colour segmentation using kmeans
 */
-MatND getHist(Mat& img, Mat& mask, int hbins, int sbins) {
+void showClusters(const Mat *labels, const Mat *centers, int h, int w) {
+    std::cout << "labels: " << labels->rows << " " << labels->cols << std::endl;
+    std::cout << "centers: " << centers->rows << " " << centers->cols << std::endl;
+    assert(labels->type() == CV_32SC1);
+    assert(centers->type() == CV_32FC1);
+ 
+    cv::Mat result(h, w, CV_8UC3);
+    cv::MatIterator_<cv::Vec3b> resBegin = result.begin<cv::Vec3b>();
+    cv::MatIterator_<cv::Vec3b> resEnd = result.end<cv::Vec3b>();
+    cv::MatConstIterator_<int> labelBegin = labels->begin<int>();
+
+    cv::Mat centersU8;
+    centers->convertTo(centersU8, CV_8UC1, 255.0);
+    cv::Mat centersU8C3 = centersU8.reshape(3);
+
+    while ( resBegin != resEnd ) {
+            const cv::Vec3b& rgb = centersU8C3.ptr<cv::Vec3b>(*labelBegin)[0];
+            *resBegin = rgb;
+            ++resBegin;
+            ++labelBegin;
+    }
+    cv::imshow("K-clustered Source", result);
+}
+
+/*
+** Get the BGR histogram of the area of interest
+*/
+MatND getHist(Mat *img, Mat *mask, int bBins, int gBins, int rBins) {
     Mat src, srcMask, srcHSV;
-    img.copyTo(src);
-    mask.copyTo(srcMask);
+    img->copyTo(src);
+    mask->copyTo(srcMask);
     
     /* Convert the image to HSV format */
-    cvtColor(src, srcHSV, CV_BGR2HSV);
+    //cvtColor(src, srcHSV, CV_BGR2HSV);
 
-    namedWindow("HSV Image", CV_WINDOW_AUTOSIZE);
-    imshow("HSV Image", srcHSV);
+    //namedWindow("HSV Image", CV_WINDOW_AUTOSIZE);
+    //imshow("HSV Image", srcHSV);
     
     /* Calculate histogram */
-    const int histSize[] = {hbins, sbins};
-    float hranges[] = {0, 180};
-    float sranges[] = {0, 256};
-    const float* ranges[] = {hranges, sranges};
-    int channels[] = {0, 1};
+    const int histSize[] = {bBins, gBins, rBins};
+    float bRanges[] = {0, 256};
+    float gRanges[] = {0, 256};
+    float rRanges[] = {0, 256};
+    const float* ranges[] = {bRanges, gRanges, bRanges};
+    int channels[] = {0, 1, 2};
 
     MatND hist;
-    int numImages = 1, numDims = 2; 
-    calcHist(&srcHSV, numImages, channels, srcMask, hist, numDims, histSize, ranges);
+    int numImages = 1, numDims = 3;
+    calcHist(&src, numImages, channels, srcMask, hist, numDims, histSize, ranges);
     normalize(hist, hist);
     
-    //showHist(hist, hbins, sbins);
+    //showHist(&hist, hbins, sbins);
     return hist;
 }
 
-/* 
-** Compare function to rank images based on histogram match 
+/*
+** Find dominant colours using K-Means segmentation
 */
-bool distCompare(const pair<Mat, double>& elem1, const pair<Mat, double>& elem2) {
-    return (elem1.second > elem2.second);
-}
- 
-/* 
-** Match histograms and rank them in the ascending order of how close they are 
-** to the source 
-*/
-vector<pair<Mat, double> > matchHist(MatND& srcHist, vector<Mat>& targetList, string type) {
-    vector<pair<Mat, double> > resultList;
-    for (int i = 0; i < targetList.size(); i++) {
-        Mat mask = createMask(targetList[i]);
-        if (type.compare("watch") == 0) {
-            mask = detectDial(targetList[i]);
-        }
-        MatND targetHist = getHist(targetList[i], mask);
-        double dist = compareHist(srcHist, targetHist, CV_COMP_CORREL);
-        resultList.push_back(make_pair(targetList[i], dist));
-    }
+void clusterKmeans(Mat *img, const Mat *mask) {
+    Mat src, srcMask;
+    mask->copyTo(srcMask);
+    img->copyTo(src, srcMask);
+    imshow("original", src);
+    std::cout << "src: " << src.rows << ", " << src.cols << std::endl;
+    assert(src.type() == CV_8UC3);
 
-    sort(resultList.begin(), resultList.end(), distCompare);
-    return resultList;
+    cv::Mat srcFlat = src.reshape(1, src.cols * src.rows);
+    assert(srcFlat.type() == CV_8UC1);
+
+    cv::Mat srcFlat32f;
+    srcFlat.convertTo(srcFlat32f, CV_32FC1, 1.0 / 255.0);
+    assert(srcFlat32f.type() == CV_32FC1);
+
+    cv::Mat labels;
+    int nClusters = 5, nAttempts = 5;
+    cv::TermCriteria criteria {cv::TermCriteria::COUNT, 100, 1};
+    cv::Mat centers;
+    cv::kmeans(srcFlat32f, nClusters, labels, criteria, nAttempts,
+               cv::KMEANS_RANDOM_CENTERS, centers);
+
+    showClusters(&labels, &centers, src.rows, src.cols);
 }
 
 /*
 ** Extract SURF keypoints
 */
-Mat extractSURF(Mat& img, vector<KeyPoint>& keypoints) {
+Mat extractSURF(Mat *img, vector<KeyPoint> *keypoints) {
     Mat src;
-    img.copyTo(src);
+    img->copyTo(src);
 
     cvtColor(src, src, CV_BGR2GRAY);
     
     /* Extract Keypoints */
     SurfFeatureDetector detector(400);
-    detector.detect(src, keypoints);
+    detector.detect(src, *keypoints);
 
     /* Compute Descriptors */
     SurfDescriptorExtractor extractor;
     Mat descriptor;
-    extractor.compute(src, keypoints, descriptor);
+    extractor.compute(src, *keypoints, descriptor);
     
-    //showKeypoints(src, keypoints);
-    return descriptor;    
+    //showKeypoints(&src, keypoints);
+    return descriptor;
 }
 
-vector<DMatch> filterSURFMatches(Mat& srcDesc, vector<DMatch> matches) {
+/*
+** Filter good SURF matches
+** "good" matches: matches whose distance is less than 2*minDist,
+** or a small arbitary value ( 0.02 ) in the event that minDist is very
+** small)
+** PS.- radiusMatch can also be used here.
+*/
+vector<DMatch> filterSURFMatches(Mat *srcDesc, vector<DMatch> *matches) {
     vector <DMatch> goodMatches;
     double maxDist = 0; double minDist = 100;
 
     /* Quick calculation of max and min distances between keypoints */
-    for( int i = 0; i < srcDesc.rows; i++ ) {
-        double dist = matches[i].distance;
+    for( int i = 0; i < srcDesc->rows; i++ ) {
+        double dist = (*matches)[i].distance;
         if( dist < minDist ) minDist = dist;
         if( dist > maxDist ) maxDist = dist;
     }
 
-    /* 
-    ** "good" matches: matches whose distance is less than 2*minDist,
-    ** or a small arbitary value ( 0.02 ) in the event that minDist is very
-    ** small)
-    ** PS.- radiusMatch can also be used here.
-    */
-
-    for( int i = 0; i < srcDesc.rows; i++ ) {
-        if (matches[i].distance <= max(2*minDist, 0.02)) {
-            goodMatches.push_back(matches[i]); 
+    for( int i = 0; i < srcDesc->rows; i++ ) {
+        if ((*matches)[i].distance <= max(2*minDist, 0.02)) {
+            goodMatches.push_back((*matches)[i]);
         }
     }
     
     return goodMatches;
 }
 
-vector<pair<Mat, int> > matchSURF(Mat& imgDesc, vector<Mat>& targetList) {
-    vector<pair<Mat, int> > resultList;
+/*
+** Get the texture using Local Binary Pattern feature
+*/
+Mat getTexture(Mat *img) {
+    Mat src, lbp;
+    img->copyTo(src);
+    int radius = 1;
+    int neighbours = 8;
+
+    lbp::VARLBP(src, lbp, radius, neighbours);
+    normalize(lbp, lbp, 0, 255, NORM_MINMAX, CV_8UC1);
+
+    //imshow("LBP", lbp);
+
+    return lbp;
+}
+
+/*
+** Compute 1D histogram of graysclae image
+** Called to compute histogram of the LBP texture feature
+*/
+Mat getHist1D(Mat *img, int nBins) {
+    Mat src;
+    img->copyTo(src);
+
+    const int histSize[] = {nBins};
+    float nRanges[] = {0, 256};
+    const float* ranges[] = {nRanges};
+    const int channels[] = {0};
+
+    MatND hist;
+    int numImages = 1, numDims = 1;
+    calcHist(&src, numImages, channels, Mat(), hist, numDims, histSize, ranges);
+    //normalize(hist, hist);
+
+    return hist;
+}
+
+/*
+** Compare function to rank images based on histogram match in descending order of
+** the distance parameter
+*/
+bool distCompareDesc(const pair<string, double> elem1, const pair<string, double> elem2) {
+    return (elem1.second > elem2.second);
+}
+
+/*
+** Compare function to rank images based on histogram match in descending order of
+** the distance parameter
+*/
+bool distCompareAsc(const pair<string, double> elem1, const pair<string, double> elem2) {
+    return (elem1.second < elem2.second);
+}
+
+/*
+** Match histograms and rank them in the ascending order of how close they are
+** to the source
+*/
+vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetList, bool doSort) {
+    vector<pair<string, double> > resultList;
+    for (int i = 0; i < targetList->size(); i++) {
+        Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
+        Mat mask = createMask(&target);
+        MatND targetHist = getHist(&target, &mask);
+        double dist = compareHist(*srcHist, targetHist, CV_COMP_CORREL);
+        resultList.push_back(make_pair((*targetList)[i], dist));
+    }
+
+    if (doSort == true)
+        sort(resultList.begin(), resultList.end(), distCompareDesc);
+
+    return resultList;
+}
+
+/*
+** Match based on SURF feature points
+*/
+vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList, bool doSort) {
+    vector<pair<string, int> > resultList;
 
     Mat srcDesc;
-    imgDesc.copyTo(srcDesc);
-    for (int i = 0; i < targetList.size(); i++) {
+    imgDesc->copyTo(srcDesc);
+    for (int i = 0; i < targetList->size(); i++) {
         /* Extract descriptors of target */
+        Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
         vector<KeyPoint> keypoints;
-        Mat targetDesc = extractSURF(targetList[i], keypoints);
+        Mat targetDesc = extractSURF(&target, &keypoints);
         
         /* Identify matches with the source descriptor */
         FlannBasedMatcher matcher;
         std::vector< DMatch > matches;
         matcher.match(srcDesc, targetDesc, matches);
         /* filter Matches based on the distance */
-        matches = filterSURFMatches(srcDesc, matches);
-        resultList.push_back(make_pair(targetList[i], matches.size()));
+        matches = filterSURFMatches(&srcDesc, &matches);
+        resultList.push_back(make_pair((*targetList)[i], matches.size()));
     }    
     
-    sort(resultList.begin(), resultList.end(), distCompare);
+    if (doSort == true)
+        sort(resultList.begin(), resultList.end(), distCompareDesc);
+
     return resultList;
 }
 
-vector<pair<Mat, double> > matchTexture(Mat& imgSample, vector<Mat>& targetList) {
-    vector<pair<Mat, double> > resultList;
+/*
+** Match LBP texture pattern of samples taken from the image using histograms
+*/
+vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targetList, bool doSort) {
+    vector<pair<string, double> > resultList;
     
-    Mat srcSample;
-    imgSample.copyTo(srcSample);
-    int h = srcSample.rows;
-    int w = srcSample.cols;
+    Mat srcTexture;
+    imgTexture->copyTo(srcTexture);
+    int h = srcTexture.rows;
+    int w = srcTexture.cols;
+    Mat srcHist = getHist1D(&srcTexture, 32);
 
-    for (int i = 0; i < targetList.size(); i++) {
-        Mat mask = createMask(targetList[i]);
-        Mat targetTexture = getTexture(targetList[i], mask, Size(50, 50));
+    for (int i = 0; i < targetList->size(); i++) {
+        Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
+        Mat mask = createMask(&target);
+        Mat targetSample = getMaterialSample(&target, &mask, Size(50, 50));
+        Mat targetTexture = getTexture(&targetSample);
         int rCols =  w - targetTexture.cols + 1;
         int rRows = h - targetTexture.rows + 1;
         
         Mat result = Mat(rRows, rCols, CV_32FC1);
-        matchTemplate(srcSample, targetTexture, result, CV_TM_CCORR_NORMED);
-        normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
-        double maxVal = 0.;
-        minMaxLoc(result, 0, &maxVal, 0, 0);
-        resultList.push_back(make_pair(targetList[i], maxVal));
+
+        Mat targetHist = getHist1D(&targetTexture, 32);
+
+        //matchTemplate(srcTexture, targetTexture, result, CV_TM_CCOEFF_NORMED);
+        //normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+        double dist = compareHist(srcHist, targetHist, CV_COMP_CORREL);
+        //double maxVal = 0.;
+        //minMaxLoc(result, 0, &maxVal, 0, 0);
+
+        resultList.push_back(make_pair((*targetList)[i], dist));
+        //resultList.push_back(make_pair((*targetList)[i], maxVal));
+        //resultList.push_back(make_pair(targetTexture, maxVal));
     }
 
-    sort(resultList.begin(), resultList.end(), distCompare);
+    if (doSort == true)
+        sort(resultList.begin(), resultList.end(), distCompareDesc);
+
+    return resultList;
+}
+
+/*
+** Match products based on the contours defining their outline
+*/
+vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList, bool doSort) {
+    vector<pair<string, double> > resultList;
+
+    Mat src;
+    img->copyTo(src);
+
+    for (int i = 0; i < targetList->size(); i++) {
+
+        Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
+        vector<Point> targetShape;
+        Mat mask = createMask(&target, true, &targetShape);
+
+        //double dist = matchShapes(*srcShape, targetShape, CV_CONTOURS_MATCH_I1, 0.0);
+        int srcNonZero = countNonZero(src);
+        int targetNonZero = countNonZero(mask);
+        double dist = 1 - (abs(srcNonZero - targetNonZero) / srcNonZero);
+
+        //matchTemplate(srcTexture, targetTexture, result, CV_TM_CCOEFF_NORMED);
+        //normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+        resultList.push_back(make_pair((*targetList)[i], dist));
+    }
+
+    if (doSort == true)
+        sort(resultList.begin(), resultList.end(), distCompareDesc);
+
     return resultList;
 }
