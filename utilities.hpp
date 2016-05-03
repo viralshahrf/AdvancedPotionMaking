@@ -1,7 +1,11 @@
 #ifndef UTILITIES_HPP
 #define UTILITIES_HPP
 
-#include <cv.h>
+//#include <cv.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <iostream>
 #include <highgui.h>
 #include <string>
 #include <dirent.h>

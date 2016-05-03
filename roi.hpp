@@ -1,8 +1,11 @@
 #ifndef ROI_HPP
 #define ROI_HPP
 
-#include <cv.h>
-#include <highgui.h>
+//#include <cv.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <iostream>
 
 cv::Mat detectDial(cv::Mat *img);
 

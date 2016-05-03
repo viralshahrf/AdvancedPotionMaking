@@ -43,9 +43,7 @@ void showKeypoints(Mat *img, vector<KeyPoint> *keypoints) {
 /*
 ** Show image after colour segmentation using kmeans
 */
-void showClusters(const Mat *labels, const Mat *centers, int h, int w) {
-    std::cout << "labels: " << labels->rows << " " << labels->cols << std::endl;
-    std::cout << "centers: " << centers->rows << " " << centers->cols << std::endl;
+Mat showClusters(const Mat *labels, const Mat *centers, int h, int w) {
     assert(labels->type() == CV_32SC1);
     assert(centers->type() == CV_32FC1);
  
@@ -64,23 +62,17 @@ void showClusters(const Mat *labels, const Mat *centers, int h, int w) {
             ++resBegin;
             ++labelBegin;
     }
-    cv::imshow("K-clustered Source", result);
+    return result;
 }
 
 /*
 ** Get the BGR histogram of the area of interest
 */
 MatND getHist(Mat *img, Mat *mask, int bBins, int gBins, int rBins) {
-    Mat src, srcMask, srcHSV;
+    Mat src, srcMask;
     img->copyTo(src);
     mask->copyTo(srcMask);
-    
-    /* Convert the image to HSV format */
-    //cvtColor(src, srcHSV, CV_BGR2HSV);
 
-    //namedWindow("HSV Image", CV_WINDOW_AUTOSIZE);
-    //imshow("HSV Image", srcHSV);
-    
     /* Calculate histogram */
     const int histSize[] = {bBins, gBins, rBins};
     float bRanges[] = {0, 256};
@@ -94,19 +86,18 @@ MatND getHist(Mat *img, Mat *mask, int bBins, int gBins, int rBins) {
     calcHist(&src, numImages, channels, srcMask, hist, numDims, histSize, ranges);
     normalize(hist, hist);
     
-    //showHist(&hist, hbins, sbins);
     return hist;
 }
 
 /*
 ** Find dominant colours using K-Means segmentation
 */
-void clusterKmeans(Mat *img, const Mat *mask) {
+Mat clusterKmeans(Mat *img, const Mat *mask) {
     Mat src, srcMask;
     mask->copyTo(srcMask);
     img->copyTo(src, srcMask);
-    imshow("original", src);
-    std::cout << "src: " << src.rows << ", " << src.cols << std::endl;
+    //imshow("original", src);
+    //std::cout << "src: " << src.rows << ", " << src.cols << std::endl;
     assert(src.type() == CV_8UC3);
 
     cv::Mat srcFlat = src.reshape(1, src.cols * src.rows);
@@ -123,30 +114,33 @@ void clusterKmeans(Mat *img, const Mat *mask) {
     cv::kmeans(srcFlat32f, nClusters, labels, criteria, nAttempts,
                cv::KMEANS_RANDOM_CENTERS, centers);
 
-    showClusters(&labels, &centers, src.rows, src.cols);
+    return showClusters(&labels, &centers, src.rows, src.cols);
 }
 
 /*
 ** Extract SURF keypoints
 */
+/*
 Mat extractSURF(Mat *img, vector<KeyPoint> *keypoints) {
     Mat src;
     img->copyTo(src);
 
+    initModule_nonfree();
     cvtColor(src, src, CV_BGR2GRAY);
     
-    /* Extract Keypoints */
-    SurfFeatureDetector detector(400);
+    // Extract Keypoints
+    xfeatures2d::SurfFeatureDetector detector(400);
     detector.detect(src, *keypoints);
 
-    /* Compute Descriptors */
-    SurfDescriptorExtractor extractor;
+    // Compute Descriptors
+    xfeatures2d::SurfDescriptorExtractor extractor;
     Mat descriptor;
     extractor.compute(src, *keypoints, descriptor);
     
     //showKeypoints(&src, keypoints);
     return descriptor;
 }
+*/
 
 /*
 ** Filter good SURF matches
@@ -239,12 +233,12 @@ vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetLi
         Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
         Mat mask = createMask(&target);
         MatND targetHist = getHist(&target, &mask);
-        double dist = compareHist(*srcHist, targetHist, CV_COMP_CORREL);
+        double dist = compareHist(*srcHist, targetHist, CV_COMP_CHISQR);
         resultList.push_back(make_pair((*targetList)[i], dist));
     }
 
     if (doSort == true)
-        sort(resultList.begin(), resultList.end(), distCompareDesc);
+        sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
 }
@@ -252,22 +246,24 @@ vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetLi
 /*
 ** Match based on SURF feature points
 */
+/*
 vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList, bool doSort) {
     vector<pair<string, int> > resultList;
 
     Mat srcDesc;
     imgDesc->copyTo(srcDesc);
     for (int i = 0; i < targetList->size(); i++) {
-        /* Extract descriptors of target */
+        //Extract descriptors of target
         Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
         vector<KeyPoint> keypoints;
         Mat targetDesc = extractSURF(&target, &keypoints);
         
-        /* Identify matches with the source descriptor */
+        //Identify matches with the source descriptor
         FlannBasedMatcher matcher;
         std::vector< DMatch > matches;
         matcher.match(srcDesc, targetDesc, matches);
-        /* filter Matches based on the distance */
+
+        //filter Matches based on the distance
         matches = filterSURFMatches(&srcDesc, &matches);
         resultList.push_back(make_pair((*targetList)[i], matches.size()));
     }    
@@ -277,6 +273,7 @@ vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList, b
 
     return resultList;
 }
+*/
 
 /*
 ** Match LBP texture pattern of samples taken from the image using histograms
@@ -302,19 +299,13 @@ vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targ
 
         Mat targetHist = getHist1D(&targetTexture, 32);
 
-        //matchTemplate(srcTexture, targetTexture, result, CV_TM_CCOEFF_NORMED);
-        //normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
-        double dist = compareHist(srcHist, targetHist, CV_COMP_CORREL);
-        //double maxVal = 0.;
-        //minMaxLoc(result, 0, &maxVal, 0, 0);
+        double dist = compareHist(srcHist, targetHist, CV_COMP_CHISQR);
 
         resultList.push_back(make_pair((*targetList)[i], dist));
-        //resultList.push_back(make_pair((*targetList)[i], maxVal));
-        //resultList.push_back(make_pair(targetTexture, maxVal));
     }
 
     if (doSort == true)
-        sort(resultList.begin(), resultList.end(), distCompareDesc);
+        sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
 }
@@ -327,25 +318,45 @@ vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList, b
 
     Mat src;
     img->copyTo(src);
+    vector<Point> srcShape;
+    Mat srcMask = createMask(&src, true, &srcShape);
 
     for (int i = 0; i < targetList->size(); i++) {
-
         Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
+        if (!target.data)
+            continue;
         vector<Point> targetShape;
         Mat mask = createMask(&target, true, &targetShape);
 
-        //double dist = matchShapes(*srcShape, targetShape, CV_CONTOURS_MATCH_I1, 0.0);
-        int srcNonZero = countNonZero(src);
-        int targetNonZero = countNonZero(mask);
-        double dist = 1 - (abs(srcNonZero - targetNonZero) / srcNonZero);
-
-        //matchTemplate(srcTexture, targetTexture, result, CV_TM_CCOEFF_NORMED);
-        //normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+        double dist = matchShapes(srcShape, targetShape, CV_CONTOURS_MATCH_I1, 0.0);
         resultList.push_back(make_pair((*targetList)[i], dist));
     }
 
     if (doSort == true)
         sort(resultList.begin(), resultList.end(), distCompareDesc);
+
+    return resultList;
+}
+
+/*
+** Match products based on the contours defining their outline
+*/
+vector<pair<string, double> > matchShape(vector<Point> *srcOutline, vector<string> *targetList, bool doSort) {
+    vector<pair<string, double> > resultList;
+    Ptr<ShapeContextDistanceExtractor> srcShapeContext = cv::createShapeContextDistanceExtractor();
+
+    for (int i = 0; i < targetList->size(); i++) {
+        Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
+        if (!target.data)
+            continue;
+        vector<Point> targetOutline;
+        Mat tempMask = createMask(&target, true, &targetOutline);
+        double dist = srcShapeContext->computeDistance(*srcOutline, targetOutline);
+        resultList.push_back(make_pair((*targetList)[i], dist));
+    }
+
+    if (doSort == true)
+        sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
 }

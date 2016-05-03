@@ -4,17 +4,25 @@
 #include "roi.hpp"
 #include "lbp.hpp"
 
-#include "opencv2/features2d/features2d.hpp"
-#include "opencv2/nonfree/features2d.hpp"
-#include "opencv2/nonfree/nonfree.hpp"
+#include <opencv2/opencv_modules.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/features2d/features2d.hpp>
+//#include <opencv2/nonfree/features2d.hpp>
+//#include <opencv2/nonfree/nonfree.hpp>
+#include <opencv2/xfeatures2d.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/shape.hpp>
+#include <iostream>
+
 
 
 using namespace std;
 using namespace cv;
 
-MatND getHist(Mat *img, Mat *mask, int bBins = 32, int gBins = 32, int rBins = 32);
+MatND getHist(Mat *img, Mat *mask, int bBins = 6, int gBins = 6, int rBins = 6);
 
-void clusterKmeans(Mat *img, const Mat *mask);
+Mat clusterKmeans(Mat *img, const Mat *mask);
 
 Mat extractSURF(Mat *img, vector<KeyPoint> *keypoints);
 
@@ -36,6 +44,9 @@ vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targ
                                         bool doSort = true);
 
 vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList,
+                                      bool doSort = true);
+
+vector<pair<string, double> > matchShape(vector<Point> *imgOutline, vector<string> *targetList,
                                       bool doSort = true);
 
 #endif

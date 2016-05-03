@@ -9,7 +9,7 @@ Mat detectDial(Mat *img) {
     
     /* Create Gray Image */
     Mat srcGray;
-    cvtColor(src, srcGray, CV_BGR2GRAY);
+    cvtColor(src, srcGray, COLOR_BGR2GRAY);
     
     /* Detect Circles */
     vector<Vec3f> circles;
@@ -52,14 +52,14 @@ Mat createMask(Mat *img, bool returnOutline, vector<Point> *outline) {
 
     /* Create Gray Image */
     Mat srcGray;
-    cvtColor(src, srcGray, CV_BGR2GRAY);
+    cvtColor(src, srcGray, COLOR_BGR2GRAY);
     GaussianBlur(srcGray, srcGray, Size(9, 9), 2, 2);
 
     /* Canny edge detection */
     Mat srcEdges;
     int threshold = 50, kernel_size = 3;
     Canny(srcGray, srcEdges, threshold, threshold*2, kernel_size);
-    blur(srcEdges, srcEdges, Size(3,3) );
+    blur(srcEdges, srcEdges, Size(5,5));
 
     /* Find contours for ROI */
     vector<vector<Point> > contours;
@@ -83,7 +83,7 @@ Mat createMask(Mat *img, bool returnOutline, vector<Point> *outline) {
     if (returnOutline == true)
         *outline = contours[maxIndex];
 
-    cvtColor(srcMask, srcMask, CV_BGR2GRAY);
+    cvtColor(srcMask, srcMask, COLOR_BGR2GRAY);
 
     //namedWindow("Region of Interest", CV_WINDOW_AUTOSIZE);
     //imshow("Region of Interest", srcMask);
@@ -96,7 +96,7 @@ Mat getMaterialSample(Mat *img, Mat *mask, Size sampleSize) {
     img->copyTo(src);
 
     Mat srcGray, srcEdges;
-    cvtColor(src, srcGray, CV_BGR2GRAY);
+    cvtColor(src, srcGray, COLOR_BGR2GRAY);
     /* Canny edge detection */
     int threshold = 50, kernel_size = 3;
     Canny(srcGray, srcEdges, threshold*2, threshold*4, kernel_size);
@@ -106,7 +106,7 @@ Mat getMaterialSample(Mat *img, Mat *mask, Size sampleSize) {
     Mat maskGray;
     mask->copyTo(maskGray);
     if (maskGray.type() != CV_8UC1) {
-        cvtColor(maskGray, maskGray, CV_BGR2GRAY);
+        cvtColor(maskGray, maskGray, COLOR_BGR2GRAY);
     }
     GaussianBlur(maskGray, maskGray, Size(9, 9), 2, 2);
 

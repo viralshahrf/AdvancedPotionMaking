@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <algorithm>
 #include <python2.7/Python.h>
 
 #include "roi.hpp"
@@ -30,6 +31,9 @@ std::vector<std::string> searchImages(char* fileName, double colorWeight, double
     bool doSort = false;
 
     /* Calculate color measure distance using color histograms */
+    cv::Mat temp = cv::Mat();
+    cv::Mat clustered = clusterKmeans(&src, &srcROI);
+    cv::imshow("Clustered K Means", clustered);
     cv::MatND hist = getHist(&src, &srcROI);
     std::vector<std::pair<std::string, double> > colorMeasure = matchHist(&hist, &files, doSort);
 
@@ -39,22 +43,30 @@ std::vector<std::string> searchImages(char* fileName, double colorWeight, double
     std::vector<std::pair<std::string, double> > textureMeasure = matchTexture(&texture, &files, doSort);
 
     /* Calculate shape measure distance using HuMoments */
-    std::vector<std::pair<std::string, double> > shapeMeasure = matchShape(&srcROI, &files, doSort);
+    std::vector<std::pair<std::string, double> > shapeMeasure = matchShape(&outline, &files, doSort);
 
     std::vector<std::pair<std::string, double> > totalMeasure;
-    //int numResults = std::min(std::min(RESULTS, colorMeasure.size()), std::min(textureMeasure.size(), shapeMeasure.size()));
 
-    int numResults = RESULTS;
+    /* Sort the results on the file name to ensure same order for all three */
+    int cSize = colorMeasure.size();
+    int sSize = shapeMeasure.size();
+    int tSize = textureMeasure.size();
+    int numResults = std::min(cSize, std::min(tSize, sSize));
+ 
     for (int i = 0; i < numResults; i++) {
-        double totalDist = colorWeight*colorMeasure[i].second + textureWeight*textureMeasure[i].second + shapeWeight*shapeMeasure[i].second;
+        double totalDist;
+        totalDist += colorWeight*colorMeasure[i].second;
+        totalDist += textureWeight*textureMeasure[i].second;
+        totalDist += shapeWeight*shapeMeasure[i].second;
         totalMeasure.push_back(std::make_pair(colorMeasure[i].first, totalDist));
     }
 
-    std::sort(totalMeasure.begin(), totalMeasure.end(), distCompareDesc);
-
+    std::sort(totalMeasure.begin(), totalMeasure.end(), distCompareAsc);
+    numResults = std::min(numResults, RESULTS);
     std::vector<std::string> results;
-    for (int i = 0; i < totalMeasure.size(); i++) {
+    for (int i = 0; i < numResults; i++) {
         results.push_back(totalMeasure[i].first);
+        printf("Dist %d: %.2f\n", i, totalMeasure[i].second);
     }
 
     return results;
@@ -73,9 +85,10 @@ PyObject* testFunction(char* fileName, int colorPriority, int texturePriority, i
 
     vector<string> resultImages = searchImages(fileName, colorWeight, textureWeight, shapeWeight, productCategory);
 
-    for (int i = 0; i < 10; i++) {
-        PyList_Append(result, PyString_FromFormat("/home/viral/AdvancedPotionMaking/test.jpg"));
+    for (int i = 0; i < resultImages.size(); i++) {
+        PyList_Append(result, PyString_FromFormat(resultImages[i].c_str()));
     }
 
+    std::cout << "Done\n";
     return result;
 }
