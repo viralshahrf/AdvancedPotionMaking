@@ -1,6 +1,7 @@
 #include "features.hpp"
 
 using namespace cv;
+using namespace cv::xfeatures2d;
 using namespace std;
 
 /*
@@ -120,27 +121,25 @@ Mat clusterKmeans(Mat *img, const Mat *mask) {
 /*
 ** Extract SURF keypoints
 */
-/*
 Mat extractSURF(Mat *img, vector<KeyPoint> *keypoints) {
     Mat src;
     img->copyTo(src);
 
-    initModule_nonfree();
+    //initModule_nonfree();
     cvtColor(src, src, CV_BGR2GRAY);
     
     // Extract Keypoints
-    xfeatures2d::SurfFeatureDetector detector(400);
-    detector.detect(src, *keypoints);
+    Ptr<SURF> surfFeature = SURF::create(400);
+    surfFeature->detect(src, *keypoints);
 
     // Compute Descriptors
-    xfeatures2d::SurfDescriptorExtractor extractor;
+    //xfeatures2d::SurfDescriptorExtractor extractor;
     Mat descriptor;
-    extractor.compute(src, *keypoints, descriptor);
+    surfFeature->compute(src, *keypoints, descriptor);
     
-    //showKeypoints(&src, keypoints);
+    showKeypoints(&src, keypoints);
     return descriptor;
 }
-*/
 
 /*
 ** Filter good SURF matches
@@ -246,9 +245,8 @@ vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetLi
 /*
 ** Match based on SURF feature points
 */
-/*
-vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList, bool doSort) {
-    vector<pair<string, int> > resultList;
+vector<pair<string, double> > matchSURF(Mat *imgDesc, vector<string> *targetList, bool doSort) {
+    vector<pair<string, double> > resultList;
 
     Mat srcDesc;
     imgDesc->copyTo(srcDesc);
@@ -265,15 +263,14 @@ vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList, b
 
         //filter Matches based on the distance
         matches = filterSURFMatches(&srcDesc, &matches);
-        resultList.push_back(make_pair((*targetList)[i], matches.size()));
+        resultList.push_back(make_pair((*targetList)[i], -(double)matches.size()));
     }    
     
     if (doSort == true)
-        sort(resultList.begin(), resultList.end(), distCompareDesc);
+        sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
 }
-*/
 
 /*
 ** Match LBP texture pattern of samples taken from the image using histograms

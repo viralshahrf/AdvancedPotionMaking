@@ -37,7 +37,7 @@ bool distCompareAsc(const pair<string, double> elem1, const pair<string, double>
 vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetList,
                                      bool doSort = true);
 
-vector<pair<string, int> > matchSURF(Mat *imgDesc, vector<string> *targetList,
+vector<pair<string, double> > matchSURF(Mat *imgDesc, vector<string> *targetList,
                                   bool doSort = true);
 
 vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targetList,
