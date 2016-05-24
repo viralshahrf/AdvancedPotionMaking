@@ -137,7 +137,7 @@ Mat extractSURF(Mat *img, vector<KeyPoint> *keypoints) {
     Mat descriptor;
     surfFeature->compute(src, *keypoints, descriptor);
     
-    showKeypoints(&src, keypoints);
+    //showKeypoints(&src, keypoints);
     return descriptor;
 }
 
@@ -222,6 +222,10 @@ bool distCompareAsc(const pair<string, double> elem1, const pair<string, double>
     return (elem1.second < elem2.second);
 }
 
+bool nameCompareAsc(const pair<string, double> elem1, const pair<string, double> elem2) {
+    return (elem1.first < elem2.first);
+}
+
 /*
 ** Match histograms and rank them in the ascending order of how close they are
 ** to the source
@@ -240,6 +244,19 @@ vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetLi
         sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
+}
+
+/*
+** Compute distance between any two images based on color histogram
+*/
+double matchHist(string *srcFile, string *targetFile) {
+    Mat src = imread(*srcFile, CV_LOAD_IMAGE_COLOR);
+    Mat target = imread(*targetFile, CV_LOAD_IMAGE_COLOR);
+    Mat srcMask = createMask(&src);
+    Mat targetMask = createMask(&target);
+    MatND srcHist = getHist(&src, &srcMask);
+    MatND targetHist = getHist(&target, &targetMask);
+    return compareHist(srcHist, targetHist, CV_COMP_CHISQR);
 }
 
 /*
@@ -273,6 +290,29 @@ vector<pair<string, double> > matchSURF(Mat *imgDesc, vector<string> *targetList
 }
 
 /*
+** Compute number of matches based on SURF feature points
+*/
+double matchSURF(string *srcFile, string *targetFile) {
+    Mat src = imread(*srcFile, CV_LOAD_IMAGE_COLOR);
+    Mat target = imread(*targetFile, CV_LOAD_IMAGE_COLOR);
+
+    vector<KeyPoint> srcKeypoints;
+    vector<KeyPoint> targetKeypoints;
+ 
+    Mat srcDesc = extractSURF(&src, &srcKeypoints);
+    Mat targetDesc = extractSURF(&target, &targetKeypoints);
+
+    //Identify matches with the source descriptor
+    FlannBasedMatcher matcher;
+    std::vector< DMatch > matches;
+    matcher.match(srcDesc, targetDesc, matches);
+
+    //filter Matches based on the distance
+    matches = filterSURFMatches(&srcDesc, &matches);
+    return (double)matches.size();
+}
+
+/*
 ** Match LBP texture pattern of samples taken from the image using histograms
 */
 vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targetList, bool doSort) {
@@ -289,10 +329,10 @@ vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targ
         Mat mask = createMask(&target);
         Mat targetSample = getMaterialSample(&target, &mask, Size(50, 50));
         Mat targetTexture = getTexture(&targetSample);
-        int rCols =  w - targetTexture.cols + 1;
-        int rRows = h - targetTexture.rows + 1;
+        //int rCols =  w - targetTexture.cols + 1;
+        //int rRows = h - targetTexture.rows + 1;
         
-        Mat result = Mat(rRows, rCols, CV_32FC1);
+        //Mat result = Mat(rRows, rCols, CV_32FC1);
 
         Mat targetHist = getHist1D(&targetTexture, 32);
 
@@ -308,8 +348,26 @@ vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targ
 }
 
 /*
+** Compute distance between two images based on the LBP pattern
+*/
+double matchTexture(string *srcFile, string *targetFile) {
+    Mat src = imread(*srcFile, CV_LOAD_IMAGE_COLOR);
+    Mat target = imread(*targetFile, CV_LOAD_IMAGE_COLOR);
+    Mat srcMask = createMask(&src);
+    Mat targetMask = createMask(&target);
+    Mat srcSample = getMaterialSample(&src, &srcMask, Size(50, 50));
+    Mat targetSample = getMaterialSample(&target, &targetMask, Size(50, 50));
+    Mat srcTexture = getTexture(&srcSample);
+    Mat targetTexture = getTexture(&targetSample);
+    Mat srcHist = getHist1D(&srcTexture, 32);
+    Mat targetHist = getHist1D(&targetTexture, 32);
+    return compareHist(srcHist, targetHist, CV_COMP_CHISQR);
+}
+
+/*
 ** Match products based on the contours defining their outline
 */
+/*
 vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList, bool doSort) {
     vector<pair<string, double> > resultList;
 
@@ -326,6 +384,7 @@ vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList, b
         Mat mask = createMask(&target, true, &targetShape);
 
         double dist = matchShapes(srcShape, targetShape, CV_CONTOURS_MATCH_I1, 0.0);
+        dist = abs(dist);
         resultList.push_back(make_pair((*targetList)[i], dist));
     }
 
@@ -334,6 +393,7 @@ vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList, b
 
     return resultList;
 }
+*/
 
 /*
 ** Match products based on the contours defining their outline
@@ -343,6 +403,7 @@ vector<pair<string, double> > matchShape(vector<Point> *srcOutline, vector<strin
     Ptr<ShapeContextDistanceExtractor> srcShapeContext = cv::createShapeContextDistanceExtractor();
 
     for (int i = 0; i < targetList->size(); i++) {
+        cout << "Processing file " << (*targetList)[i] << " ...\n";
         Mat target = imread((*targetList)[i], CV_LOAD_IMAGE_COLOR);
         if (!target.data)
             continue;
@@ -356,4 +417,18 @@ vector<pair<string, double> > matchShape(vector<Point> *srcOutline, vector<strin
         sort(resultList.begin(), resultList.end(), distCompareAsc);
 
     return resultList;
+}
+
+/*
+** Compute distance between two shapes using Shape Distance Extractor
+*/
+double matchShape(string *srcFile, string *targetFile) {
+    Mat src = imread(*srcFile, CV_LOAD_IMAGE_COLOR);
+    Mat target = imread(*targetFile, CV_LOAD_IMAGE_COLOR);
+    vector<Point> srcOutline;
+    vector<Point> targetOutline;
+    Mat tempMask = createMask(&src, true, &srcOutline);
+    tempMask = createMask(&target, true, &targetOutline);
+    Ptr<ShapeContextDistanceExtractor> srcShapeContext = cv::createShapeContextDistanceExtractor();
+    return srcShapeContext->computeDistance(srcOutline, targetOutline);
 }

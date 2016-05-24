@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <algorithm>
 #include <python2.7/Python.h>
+#include <mysql.h>
+#include <time.h>
+#include <stdlib.h>
 
 #include "roi.hpp"
 #include "features.hpp"
@@ -17,57 +20,55 @@ extern "C" {
         }
 }
 
+long getCurrentTime() {
+    struct timeval t;
+    gettimeofday(&t, 0);
+    return 1000000 * t.tv_sec + t.tv_usec;
+}
+
 std::vector<std::string> searchImages(char* fileName, double colorWeight, double textureWeight, double shapeWeight, char* productCategory) {
-    cv::Mat src = cv::imread(fileName);
+
+    MYSQL *conn;
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    std::string server = "shuttle.cfs9lab4dyj4.us-west-2.rds.amazonaws.com";
+    std::string user = "psp2133";
+    std::string password = "horcrux1";
+    std::string database = "AdvancePotionMaking";
+    int port = 3306;
+
+    long time1 = getCurrentTime();
+    // Connect to the Database
+    conn = mysql_init(NULL);
+    if (!mysql_real_connect(conn, server.c_str(), user.c_str(), password.c_str(), 
+                            database.c_str(), port, NULL, 0)) {
+        fprintf(stderr, "%s\n", mysql_error(conn));
+    }
  
-    /* Get the ROI from the imge */
-    std::vector<cv::Point> outline;
-    cv:: Mat srcROI = createMask(&src, true, &outline);
-
-    /* Get the target file list */
-    std::vector<std::string> files;
-    int error = getDir(productCategory, files);
-
-    bool doSort = false;
-
-    /* Calculate color measure distance using color histograms */
-    cv::Mat temp = cv::Mat();
-    cv::Mat clustered = clusterKmeans(&src, &srcROI);
-    cv::imshow("Clustered K Means", clustered);
-    cv::MatND hist = getHist(&src, &srcROI);
-    std::vector<std::pair<std::string, double> > colorMeasure = matchHist(&hist, &files, doSort);
-
-    /* Calculate texture measure distance using Local Binary Patterns */
-    cv::Mat sample = getMaterialSample(&src, &srcROI, cv::Size(50, 50));
-    cv::Mat texture = getTexture(&sample);
-    std::vector<std::pair<std::string, double> > textureMeasure = matchTexture(&texture, &files, doSort);
-
-    /* Calculate shape measure distance using HuMoments */
-    std::vector<std::pair<std::string, double> > shapeMeasure = matchShape(&outline, &files, doSort);
-
-    std::vector<std::pair<std::string, double> > totalMeasure;
-
-    /* Sort the results on the file name to ensure same order for all three */
-    int cSize = colorMeasure.size();
-    int sSize = shapeMeasure.size();
-    int tSize = textureMeasure.size();
-    int numResults = std::min(cSize, std::min(tSize, sSize));
- 
-    for (int i = 0; i < numResults; i++) {
-        double totalDist;
-        totalDist += colorWeight*colorMeasure[i].second;
-        totalDist += textureWeight*textureMeasure[i].second;
-        totalDist += shapeWeight*shapeMeasure[i].second;
-        totalMeasure.push_back(std::make_pair(colorMeasure[i].first, totalDist));
+    std::string colorMeasure = " " + std::to_string(colorWeight) + "*distColor ";
+    std::string shapeMeasure = " " + std::to_string(shapeWeight) + "*distShape ";
+    std::string textureMeasure;
+    if (std::string(productCategory) == "NeckTies") {
+        textureMeasure = " " + std::to_string(textureWeight) + "*distTexture ";
+    }
+    else {
+        textureMeasure = " " + std::to_string(textureWeight) + "*(1 - (surfMatches/maxSurfMatches)) ";
     }
 
-    std::sort(totalMeasure.begin(), totalMeasure.end(), distCompareAsc);
-    numResults = std::min(numResults, RESULTS);
+    // Query the database for the best matches
+    std::string query = "SELECT file2 FROM (SELECT file2, (" + colorMeasure + "+" + shapeMeasure + "+" + textureMeasure + ") as totalMeasure FROM " + productCategory + ", (SELECT max(surfMatches) AS maxSurfMatches FROM " + productCategory + ") Temp WHERE CONCAT(\"/home/parita/Github/AdvancedPotionMaking/\", file1) LIKE \"" + fileName + "\" ORDER BY totalMeasure LIMIT 10) TempAnother";
+    if (mysql_query(conn, query.c_str())) {
+        fprintf(stderr, "%s\n", mysql_error(conn));
+    }
+
+    res = mysql_use_result(conn);
     std::vector<std::string> results;
-    for (int i = 0; i < numResults; i++) {
-        results.push_back(totalMeasure[i].first);
-        printf("Dist %d: %.2f\n", i, totalMeasure[i].second);
+    while ((row = mysql_fetch_row(res)) != NULL) {
+        results.push_back(row[0]);
     }
+
+    // Time taken to process the query
+    std::cout << "Time taken: " << getCurrentTime() - time1 << std::endl;
 
     return results;
 }

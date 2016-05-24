@@ -34,17 +34,27 @@ bool distCompareDesc(const pair<string, double> elem1, const pair<string, double
 
 bool distCompareAsc(const pair<string, double> elem1, const pair<string, double> elem2);
 
+bool nameCompareAsc(const pair<string, double> elem1, const pair<string, double> elem2);
+
 vector<pair<string, double> > matchHist(MatND *srcHist, vector<string> *targetList,
                                      bool doSort = true);
+
+double matchHist(string *srcFile, string *targetFile);
 
 vector<pair<string, double> > matchSURF(Mat *imgDesc, vector<string> *targetList,
                                   bool doSort = true);
 
+double matchSURF(string *srcFile, string *targetFile);
+
 vector<pair<string, double> > matchTexture(Mat *imgTexture, vector<string> *targetList,
                                         bool doSort = true);
 
+double matchTexture(string *srcFile, string *targetFile);
+
 vector<pair<string, double> > matchShape(Mat *img, vector<string> *targetList,
                                       bool doSort = true);
+
+double matchShape(string *srcFile, string *targetFile);
 
 vector<pair<string, double> > matchShape(vector<Point> *imgOutline, vector<string> *targetList,
                                       bool doSort = true);

@@ -101,7 +101,6 @@ Mat getMaterialSample(Mat *img, Mat *mask, Size sampleSize) {
     int threshold = 50, kernel_size = 3;
     Canny(srcGray, srcEdges, threshold*2, threshold*4, kernel_size);
 
-
     /* Create Gray Image */
     Mat maskGray;
     mask->copyTo(maskGray);
@@ -134,10 +133,11 @@ Mat getMaterialSample(Mat *img, Mat *mask, Size sampleSize) {
 
     /* Get a sample of the given size */
     Mat textureSample = Mat::zeros(sampleSize, CV_8UC3);
-    srcGray(Rect(mc, sampleSize)).copyTo(textureSample);
-
-    //namedWindow("Texture Sample", CV_WINDOW_AUTOSIZE);
-    //imshow("Texture Sample", textureSample);
+    Rect sampleROI = Rect(mc, sampleSize);
+    Rect matToRect = Rect(0, 0, srcGray.cols, srcGray.rows);
+    bool is_inside = (sampleROI & matToRect) == sampleROI;
+    if (is_inside)
+        srcGray(Rect(mc, sampleSize)).copyTo(textureSample);
 
     return textureSample;
 }

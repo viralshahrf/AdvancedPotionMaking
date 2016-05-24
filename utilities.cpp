@@ -32,6 +32,18 @@ void getImages(vector<string> &files, vector<Mat>& vecMat) {
     }
 }
 
+/** Normalize all images in the directory **/
+void normalize(string dir) {
+    vector<string> files;
+    getDir(dir, files);
+    if (files.size() < 1) return;
+    cv::Mat src = imread(files[0], CV_LOAD_IMAGE_COLOR);
+    for (int i = 1; i < files.size(); i++) {
+        cv::Mat target = imread(files[i], CV_LOAD_IMAGE_COLOR);
+        cv::resize(target, target, src.size());
+        cv::imwrite(files[i], target);
+    }
+}
 /**
 * @brief makeCanvas Makes composite image from the given images
 * @param vecMat Vector of Images.
